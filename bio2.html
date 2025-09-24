@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>ProxDev — Card & YouTube Player</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23b388ff' d='M12 2L2 7v10l10 5 10-5V7z'/%3E%3C/svg%3E">
+<style>
+  /* ===== base ===== */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html,body { height: 100%; }
+  body {
+    background: linear-gradient(180deg,#060507 0%, #0a0710 60%);
+    color: #e6deff;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 36px;
+  }
+
+  /* ===== canvas fondo ===== */
+  canvas#bg { position: fixed; inset: 0; z-index: 0; }
+
+  /* ===== stage ===== */
+  .stage { position: relative; z-index: 2; width: min(1024px, 96vw); }
+
+  /* ===== card ===== */
+  .card {
+    width: 100%;
+    border-radius: 18px;
+    padding: 22px;
+    background: rgba(22,16,34,0.56);
+    border: 1px solid rgba(150,95,255,0.12);
+    box-shadow: 0 30px 80px rgba(2,0,10,0.75);
+    backdrop-filter: blur(10px) saturate(120%);
+    transform-style: preserve-3d;
+    transition: box-shadow .25s ease, transform .25s ease;
+    position: relative;
+    overflow: visible;
+  }
+
+  .card .top {
+    display: flex;
+    gap: 18px;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+
+  .avatar {
+    width: 96px; height: 96px;
+    border-radius: 16px; overflow: hidden;
+    flex-shrink: 0;
+    border: 1px solid rgba(255,255,255,0.04);
+    box-shadow: 0 10px 30px rgba(100,40,200,0.14), 0 2px 8px rgba(0,0,0,0.6);
+    transform: translateZ(36px);
+  }
+  .avatar img { width:100%; height:100%; object-fit:cover; display:block; }
+
+  .title {
+    transform: translateZ(30px);
+  }
+  h1 {
+    font-size: 26px; margin-bottom: 4px;
+    letter-spacing: .4px;
+    color: #efe8ff;
+    text-shadow: 0 8px 28px rgba(110,60,230,0.06);
+  }
+  .subtitle { color: #cdbfff; font-size: 13px; margin-bottom: 6px; }
+
+  .role {
+    display: inline-block;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: linear-gradient(90deg, rgba(140,90,255,0.06), rgba(40,10,80,0.04));
+    border: 1px solid rgba(140,90,255,0.08);
+    color: #d9ccff;
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 12px;
+  }
+
+  .philo {
+    font-style: italic;
+    color: #e6ddff;
+    margin: 12px 0 16px;
+    font-size: 15px;
+    line-height: 1.35;
+    text-shadow: 0 6px 18px rgba(10,5,20,0.2);
+  }
+
+  .tags { display:flex; gap:10px; flex-wrap:wrap; margin-bottom: 14px; }
+  .tag {
+    background: rgba(255,255,255,0.03);
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.03);
+    color: #d8cfff;
+    font-size: 13px;
+  }
+
+  .footer {
+    margin-top: 14px;
+    font-size: 13px;
+    color: #bdb2ff;
+    border-top: 1px solid rgba(140,90,255,0.06);
+    padding-top: 12px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+  }
+
+  /* ===== player UI ===== */
+  .player {
+    margin-top: 18px;
+    display:flex;
+    gap:14px;
+    align-items:center;
+    justify-content:space-between;
+    padding: 12px 14px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.03);
+    box-shadow: 0 12px 28px rgba(8,4,18,0.6);
+    transform: translateZ(14px);
+  }
+
+  .player-left { display:flex; gap:12px; align-items:center; min-width: 0; }
+  .track-info { min-width: 0; }
+  .track-title { font-weight:700; color:#f4ecff; font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:300px;}
+  .time { font-size:12px; color:#cdbfff; opacity:0.9; margin-top:6px; }
+
+  .controls { display:flex; gap:8px; align-items:center; }
+  .btn {
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+    border: 1px solid rgba(255,255,255,0.04);
+    padding:10px;
+    border-radius:10px;
+    cursor:pointer;
+    display:inline-flex; align-items:center; justify-content:center;
+    width:44px; height:44px;
+  }
+
+  /* big play icon */
+  .btn svg { width:20px; height:20px; display:block; }
+
+  .progress-wrap { flex:1; display:flex; align-items:center; gap:12px; min-width:150px; }
+  .progress {
+    height:8px; width:100%; background:rgba(255,255,255,0.04); border-radius:8px; position:relative; cursor:pointer;
+    overflow:visible;
+  }
+  .progress .bar { position:absolute; left:0; top:0; bottom:0; width:0; background:linear-gradient(90deg, #b388ff, #5c2bd6); border-radius:8px; }
+  .thumb { position:absolute; top:50%; transform:translate(-50%,-50%); width:14px; height:14px; border-radius:50%; background:#fff; box-shadow:0 6px 18px rgba(80,20,170,0.45); left:0; pointer-events:none; }
+
+  .volume { width:120px; display:flex; gap:8px; align-items:center; justify-content:flex-end; min-width:120px; }
+  .volume input { width:80px; }
+
+  /* floating RGB button */
+  .rgb-btn {
+    position: fixed; left: 18px; bottom: 18px; z-index: 999;
+    background: rgba(140,90,255,0.14); color: #efe8ff; border: 1px solid rgba(140,90,255,0.22);
+    padding:8px 12px; border-radius:10px; cursor:pointer;
+    box-shadow: 0 8px 26px rgba(40,10,120,0.16);
+  }
+
+  /* RGB active animations (we'll toggle class on card) */
+  .card.rgb {
+    animation: rgb-shadow 3s linear infinite;
+  }
+  @keyframes rgb-shadow {
+    0% { box-shadow: 0 30px 80px rgba(255,0,90,0.55); }
+    25%{ box-shadow: 0 30px 80px rgba(120,0,255,0.55); }
+    50%{ box-shadow: 0 30px 80px rgba(0,200,255,0.55); }
+    75%{ box-shadow: 0 30px 80px rgba(0,255,150,0.55); }
+    100%{ box-shadow: 0 30px 80px rgba(255,0,90,0.55); }
+  }
+
+  /* small screen */
+  @media (max-width:720px){
+    .player { flex-direction:column; align-items:flex-start; gap:10px; }
+    .progress-wrap { width:100%; }
+    .track-title { max-width:160px; }
+  }
+</style>
+</head>
+<body>
+  <canvas id="bg"></canvas>
+
+  <div class="stage" aria-live="polite">
+    <div class="card" id="card" data-tilt data-tilt-max="14" data-tilt-speed="400">
+      <div class="top">
+        <div class="avatar" aria-hidden="false">
+          <img src="https://cdn.discordapp.com/avatars/811973469474127913/c1312086185feb8dca79624a2dad24f4.png?size=512" alt="ProxDev Logo">
+        </div>
+        <div class="title">
+          <h1>ProxDev</h1>
+          <div class="subtitle">Desarrollador backend</div>
+          <div class="role">Desarrollador de: Nyx Hosting · OnTime · Skillnet · Stream Sound and more</div>
+        </div>
+      </div>
+
+      <div class="philo">«La vida no es tan complicada como parece, solo debes encontrar el ritmo correcto.»</div>
+
+      <div class="tags" aria-hidden="false">
+        <div class="tag">#Backend</div>
+        <div class="tag">#NyxHosting</div>
+        <div class="tag">#OnTime</div>
+        <div class="tag">#StreamSound</div>
+      </div>
+
+      <!-- player UI real -->
+      <div class="player" role="region" aria-label="Reproductor de audio">
+        <div class="player-left">
+          <div class="controls" aria-hidden="false">
+            <button class="btn" id="playBtn" title="Play/Pause" aria-pressed="false">
+              <!-- play icon by default -->
+              <svg id="playIcon" viewBox="0 0 24 24"><path fill="#fff" d="M8 5v14l11-7z"/></svg>
+              <svg id="pauseIcon" viewBox="0 0 24 24" style="display:none"><path fill="#fff" d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+            </button>
+          </div>
+          <div class="track-info">
+            <div class="track-title" id="trackTitle">YouTube</div>
+            <div class="time" id="timeDisplay">0:00 / 0:00</div>
+          </div>
+        </div>
+
+        <div class="progress-wrap" aria-hidden="false">
+          <div class="progress" id="progress" aria-label="Barra de progreso" role="slider" tabindex="0" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div class="bar" id="bar"></div>
+            <div class="thumb" id="thumb" style="left:0%"></div>
+          </div>
+        </div>
+
+        <div class="volume" aria-hidden="false">
+          <input id="vol" type="range" min="0" max="100" step="1" value="80" aria-label="Volumen">
+        </div>
+      </div>
+
+      <div class="footer">
+        <div>Infraestructura resiliente · Escalabilidad horizontal · Optimización asíncrona</div>
+        <div style="opacity:.9;font-size:13px;color:#d7ccff">ProxDev · 2025</div>
+      </div>
+    </div>
+  </div>
+
+  <button class="rgb-btn" id="rgbBtn" aria-pressed="false">Activar Modo RGB</button>
+
+  <!-- hidden YouTube container (IFrame API will inject iframe here) -->
+  <div id="yt-embed" style="position:fixed;left:-9999px;top:-9999px;width:0;height:0;overflow:hidden;"></div>
+
+  <!-- Libs -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/vanilla-tilt/1.7.2/vanilla-tilt.min.js" integrity="" crossorigin="anonymous"></script>
+  <script src="https://www.youtube.com/iframe_api"></script>
+
+  <script>
+  /* ===========================
+     Background canvas (particles + subtle lines)
+     =========================== */
+  (function(){
+    const canvas = document.getElementById('bg');
+    const ctx = canvas.getContext('2d');
+    let w = canvas.width = innerWidth;
+    let h = canvas.height = innerHeight;
+    window.addEventListener('resize', ()=>{ w = canvas.width = innerWidth; h = canvas.height = innerHeight; });
+
+    const pts = [];
+    const PT_COUNT = 140;
+    for(let i=0;i<PT_COUNT;i++){
+      pts.push({
+        x: Math.random()*w,
+        y: Math.random()*h,
+        vx: (Math.random()-0.5)*0.4,
+        vy: (Math.random()-0.5)*0.4,
+        r: Math.random()*1.6+0.6,
+        a: Math.random()*0.6+0.15
+      });
+    }
+
+    function frame(){
+      ctx.clearRect(0,0,w,h);
+      // subtle vignette
+      const g = ctx.createLinearGradient(0,0,0,h);
+      g.addColorStop(0, 'rgba(8,6,12,0.08)');
+      g.addColorStop(1, 'rgba(6,4,10,0.12)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0,0,w,h);
+
+      // particles
+      for(const p of pts){
+        p.x += p.vx; p.y += p.vy;
+        if(p.x < -20) p.x = w+20;
+        if(p.x > w+20) p.x = -20;
+        if(p.y < -20) p.y = h+20;
+        if(p.y > h+20) p.y = -20;
+        ctx.beginPath();
+        ctx.fillStyle = `rgba(140,90,255,${p.a})`;
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+        ctx.fill();
+      }
+
+      // lines (connect nearby points lightly)
+      ctx.beginPath();
+      for(let i=0;i<30;i++){
+        const a = pts[Math.floor(Math.random()*pts.length)];
+        const b = pts[Math.floor(Math.random()*pts.length)];
+        const d = Math.hypot(a.x-b.x, a.y-b.y);
+        if(d < 180){
+          ctx.strokeStyle = `rgba(120,70,255,${0.02 + (180-d)/180*0.06})`;
+          ctx.lineWidth = 1;
+          ctx.moveTo(a.x,a.y);
+          ctx.lineTo(b.x,b.y);
+        }
+      }
+      ctx.stroke();
+      requestAnimationFrame(frame);
+    }
+    frame();
+  })();
+
+  /* ===========================
+     Vanilla Tilt init
+     =========================== */
+  VanillaTilt.init(document.querySelectorAll("[data-tilt]"), {
+    max: 14, speed: 400, glare: false, "max-glare": 0.12, scale: 1.01
+  });
+
+  /* ===========================
+     YouTube IFrame API player + UI
+     =========================== */
+  const VIDEO_ID = 'uqY-3RS-V0Y';
+  let player = null;
+  let isPlaying = false;
+  let duration = 0;
+  const playBtn = document.getElementById('playBtn');
+  const playIcon = document.getElementById('playIcon');
+  const pauseIcon = document.getElementById('pauseIcon');
+  const bar = document.getElementById('bar');
+  const thumb = document.getElementById('thumb');
+  const progress = document.getElementById('progress');
+  const timeDisplay = document.getElementById('timeDisplay');
+  const volRange = document.getElementById('vol');
+  const rgbBtn = document.getElementById('rgbBtn');
+  const card = document.getElementById('card');
+
+  // helper
+  function fmt(t){
+    if(!t || isNaN(t)) return '0:00';
+    const s = Math.floor(t%60).toString().padStart(2,'0');
+    const m = Math.floor(t/60);
+    return `${m}:${s}`;
+  }
+
+  function updateUI(){
+    if(!player) return;
+    const ct = player.getCurrentTime ? player.getCurrentTime() : 0;
+    const dur = duration || (player.getDuration ? player.getDuration() : 0);
+    const pct = dur>0 ? Math.min(100, (ct/dur)*100) : 0;
+    bar.style.width = pct + '%';
+    thumb.style.left = pct + '%';
+    timeDisplay.textContent = `${fmt(ct)} / ${fmt(dur)}`;
+    progress.setAttribute('aria-valuenow', Math.round(pct));
+  }
+
+  // polling UI update
+  let uiInterval = null;
+  function startUIInterval(){ if(uiInterval) clearInterval(uiInterval); uiInterval = setInterval(updateUI, 250); }
+  function stopUIInterval(){ if(uiInterval) clearInterval(uiInterval); uiInterval = null; }
+
+  // create player when API ready
+  function onYouTubeIframeAPIReady(){
+    player = new YT.Player('yt-embed', {
+      height: '0', width: '0',
+      videoId: VIDEO_ID,
+      playerVars: {
+        autoplay: 1,
+        controls: 0,
+        loop: 1,
+        playlist: VIDEO_ID,
+        modestbranding: 1,
+        rel: 0
+      },
+      events: {
+        onReady: e => {
+          // start muted to allow autoplay; set initial volume
+          e.target.mute();
+          e.target.setVolume(volRange.value);
+          duration = e.target.getDuration() || 0;
+          updateUI();
+          startUIInterval();
+          // expose player for console debugging if needed
+          window.__ytplayer = player;
+        },
+        onStateChange: s => {
+          const YT = window.YT;
+          if(s.data === YT.PlayerState.PLAYING){
+            isPlaying = true;
+            playIcon.style.display = 'none';
+            pauseIcon.style.display = 'block';
+            playBtn.setAttribute('aria-pressed','true');
+          } else {
+            isPlaying = false;
+            playIcon.style.display = 'block';
+            pauseIcon.style.display = 'none';
+            playBtn.setAttribute('aria-pressed','false');
+          }
+        }
+      }
+    });
+  }
+  window.onYouTubeIframeAPIReady = onYouTubeIframeAPIReady;
+
+  // Play/pause toggle
+  playBtn.addEventListener('click', ()=>{
+    if(!player) return;
+    const YT = window.YT;
+    if(isPlaying){
+      player.pauseVideo();
+    } else {
+      // if the player is muted, unmute on first manual play (user gesture)
+      try { if(player.isMuted && player.isMuted()) player.unMute(); } catch(e){}
+      player.playVideo();
+    }
+  });
+
+  // volume control
+  volRange.addEventListener('input', (e)=>{
+    const v = Number(e.target.value);
+    if(player && player.setVolume) player.setVolume(v);
+  });
+
+  // progress click / seek
+  let dragging = false;
+  progress.addEventListener('pointerdown', (ev)=>{
+    dragging = true;
+    seekFromEvent(ev);
+    document.addEventListener('pointermove', seekFromEvent);
+    document.addEventListener('pointerup', stopDrag);
+  });
+  progress.addEventListener('keydown', (ev)=>{
+    if(!player || !player.getDuration) return;
+    const dur = player.getDuration();
+    if(ev.key === 'ArrowLeft') player.seekTo(Math.max(0, player.getCurrentTime()-5), true);
+    if(ev.key === 'ArrowRight') player.seekTo(Math.min(dur, player.getCurrentTime()+5), true);
+  });
+
+  function seekFromEvent(ev){
+    if(!player || !player.getDuration) return;
+    const rect = progress.getBoundingClientRect();
+    const x = (ev.clientX ?? ev.touches?.[0]?.clientX) - rect.left;
+    const pct = Math.max(0, Math.min(1, x / rect.width));
+    const t = player.getDuration() * pct;
+    // update UI immediately
+    bar.style.width = (pct*100) + '%';
+    thumb.style.left = (pct*100) + '%';
+    player.seekTo(t, true);
+    updateUI();
+  }
+  function stopDrag(){
+    dragging = false;
+    document.removeEventListener('pointermove', seekFromEvent);
+    document.removeEventListener('pointerup', stopDrag);
+  }
+
+  // keyboard space to toggle play/pause
+  document.addEventListener('keydown', (e)=>{
+    if(e.code === 'Space' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA'){
+      e.preventDefault();
+      playBtn.click();
+    }
+  });
+
+  /* ===========================
+     RGB Mode + beat-ish pulse using currentTime
+     Note: We cannot access raw audio data from the YouTube iframe (CORS).
+     So this is a simulated "beat" that uses currentTime to generate a periodic pulse.
+     This is smoother than nothing and ties animation to playback position.
+     =========================== */
+  let rgbMode = false;
+  rgbBtn.addEventListener('click', ()=>{
+    rgbMode = !rgbMode;
+    card.classList.toggle('rgb', rgbMode);
+    rgbBtn.setAttribute('aria-pressed', String(rgbMode));
+    // if turning on, try to unmute & set volume to non-zero
+    if(rgbMode && player){
+      try { if(player.isMuted && player.isMuted()) player.unMute(); } catch(e){}
+      player.setVolume(Number(volRange.value || 80));
+    }
+  });
+
+  // animate card pulse synced (approx) to audio: use sine of currentTime * freq
+  (function pulseLoop(){
+    requestAnimationFrame(pulseLoop);
+    if(!rgbMode || !player || !player.getCurrentTime) return;
+    const t = player.getCurrentTime();
+    // frequency tuned to create "beat" feel — adjustable
+    const freq = 2.2; // cycles per second
+    const amp = 6; // pixels translate
+    const scaleAmp = 0.012;
+    const pulse = (Math.sin(t*freq*2*Math.PI) + 1)/2; // 0..1
+    // apply translateY and subtle scale + shadow color shift
+    const y = -amp * pulse;
+    const scale = 1 + scaleAmp * pulse;
+    card.style.transform = `translateY(${y}px) scale(${scale})`;
+    // dynamic shadow color
+    const r = Math.round(255 * pulse);
+    const g = Math.round(80 + 175 * (1-pulse));
+    const b = Math.round(200 * (1-pulse) + 50 * pulse);
+    card.style.boxShadow = `0 30px 80px rgba(${r},${g},${b},0.52)`;
+  })();
+
+  /* ===========================
+     Ensure unmute on first user gesture (autoplay rules)
+     =========================== */
+  function ensureUserGestureUnmute(){
+    // many browsers require a user gesture to allow audible autoplay.
+    // We'll unmute the player on the first user click anywhere (if it's muted).
+    function handler(){
+      if(player){
+        try{
+          if(player.isMuted && player.isMuted()) player.unMute();
+          player.playVideo();
+        }catch(e){}
+      }
+      window.removeEventListener('pointerdown', handler);
+      window.removeEventListener('keydown', handler);
+    }
+    window.addEventListener('pointerdown', handler, {once:true});
+    window.addEventListener('keydown', handler, {once:true});
+  }
+  ensureUserGestureUnmute();
+
+  // update UI even if player wasn't ready immediately
+  setInterval(updateUI, 300);
+
+  /* ===========================
+     Small accessibility: tooltips / titles already added
+     =========================== */
+  </script>
+</body>
+</html>
